@@ -52,7 +52,13 @@
         method: 'POST',
         body: formData
       })
-      .then(response => response.json())
+      .then(response => {
+        if (response.ok) {
+          return response.json();
+        } else {
+          throw new Error('Error processing the image.');
+        }
+      })
       .then(data => {
         const imageUrl = data.imageUrl;
         const outputContainer = document.getElementById('output-container');
@@ -63,7 +69,7 @@
       })
       .catch(error => {
         console.error('Error:', error);
-        alert('An error occurred while processing the image.');
+        alert(error.message);
       });
     } else {
       alert('Please select an image to upload.');
