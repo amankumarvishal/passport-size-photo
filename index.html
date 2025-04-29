@@ -17,6 +17,9 @@
             height: auto;
             margin-top: 20px;
         }
+        #outputImage {
+            display: none; /* Hide initially */
+        }
     </style>
 </head>
 <body>
@@ -40,12 +43,9 @@
             const reader = new FileReader();
 
             reader.onload = function (e) {
-                // Here, you would typically call your backend to process the image
-                // For demonstration, we'll just display the uploaded image
+                // Display the uploaded image
                 outputImage.src = e.target.result;
-                
-                // You can implement background removal and resizing logic here
-                // using a library or an API call.
+                outputImage.style.display = "block"; // Show the image
             };
 
             reader.readAsDataURL(file);
