@@ -1,57 +1,74 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Background Remover and Passport Photo Converter</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 20px;
-        }
-        input[type="file"] {
-            margin-bottom: 20px;
-        }
-        img {
-            max-width: 100%;
-            height: auto;
-            margin-top: 20px;
-        }
-        #outputImage {
-            display: none; /* Hide initially */
-        }
-    </style>
+<title>Photo Background Remover</title>
+<style>
+  body {
+    font-family: Arial, sans-serif;
+    text-align: center;
+    padding: 20px;
+  }
+  
+  h1 {
+    margin-bottom: 20px;
+  }
+  
+  #upload-container {
+    margin-bottom: 20px;
+  }
+  
+  #output-container {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  
+  .output-image {
+    max-width: 300px;
+    margin: 10px;
+  }
+</style>
 </head>
 <body>
+<h1>Photo Background Remover</h1>
 
-<h1>Background Remover and Passport Photo Converter</h1>
+<div id="upload-container">
+  <input type="file" id="image-upload" accept="image/*">
+  <button onclick="processImage()">Remove Background</button>
+</div>
 
-<h2>Upload Image</h2>
-<input type="file" id="imageInput" accept="image/*">
-<button onclick="processImage()">Process Image</button>
-
-<h2>Output</h2>
-<img id="outputImage" alt="Processed Image">
+<div id="output-container"></div>
 
 <script>
-    function processImage() {
-        const input = document.getElementById('imageInput');
-        const outputImage = document.getElementById('outputImage');
-
-        if (input.files && input.files[0]) {
-            const file = input.files[0];
-            const reader = new FileReader();
-
-            reader.onload = function (e) {
-                // Display the uploaded image
-                outputImage.src = e.target.result;
-                outputImage.style.display = "block"; // Show the image
-            };
-
-            reader.readAsDataURL(file);
-        }
+  function processImage() {
+    const fileInput = document.getElementById('image-upload');
+    const file = fileInput.files[0];
+    
+    if (file) {
+      const formData = new FormData();
+      formData.append('image', file);
+      
+      fetch('/remove-background', {
+        method: 'POST',
+        body: formData
+      })
+      .then(response => response.blob())
+      .then(blob => {
+        const imageUrl = URL.createObjectURL(blob);
+        const outputContainer = document.getElementById('output-container');
+        const outputImage = document.createElement('img');
+        outputImage.src = imageUrl;
+        outputImage.classList.add('output-image');
+        outputContainer.appendChild(outputImage);
+      })
+      .catch(error => {
+        console.error('Error:', error);
+        alert('An error occurred while processing the image.');
+      });
+    } else {
+      alert('Please select an image to upload.');
     }
+  }
 </script>
-
 </body>
 </html>
