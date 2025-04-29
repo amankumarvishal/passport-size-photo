@@ -3,125 +3,155 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="Convert your photo to Indian passport size (35mm x 45mm) with our easy-to-use tool.">
-    <meta property="og:title" content="Indian Passport Photo Converter">
-    <meta property="og:description" content="Upload, crop, and download your photo in Indian passport size format.">
-    <meta property="og:image" content="https://<your-username>.github.io/<repo-name>/thumbnail.jpg">
-    <title>Indian Passport Photo Converter</title>
+    <title>Passport Photo Converter</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.12/cropper.min.js"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.12/cropper.min.css">
-    <link rel="icon" href="favicon.ico">
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@700&family=Inter:wght@400;500&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
         body {
             font-family: 'Inter', sans-serif;
-            background-color: #E0FFE0;
-        }
-        h1 {
-            font-family: 'Poppins', sans-serif;
-            background: linear-gradient(to right, #2563eb, #7c3aed);
-            -webkit-background-clip: text;
-            background-clip: text;
-            color: transparent;
-        }
-        #dropZone {
-            border: 3px dashed #93c5fd;
-            padding: 40px;
-            background: linear-gradient(to bottom, #f0f9ff, #ffffff);
-            border-radius: 12px;
-            transition: all 0.3s ease;
-        }
-        #dropZone.dragover {
-            border-color: #2563eb;
-            background: #dbeafe;
-            transform: scale(1.03);
-            box-shadow: 0 0 20px rgba(37, 99, 235, 0.5);
-        }
-        .cropper-container {
-            max-width: 600px;
-            margin: 20px auto;
-        }
-        #previewCanvas {
-            display: none;
-            margin: 20px auto;
-            border: 2px solid #2563eb;
-        }
-        .loader {
-            border: 6px solid #e5e7eb;
-            border-top: 6px solid #2563eb;
-            border-radius: 50%;
-            width: 60px;
-            height: 60px;
-            animation: spin 1s linear infinite;
-            display: none;
-            margin: 30px auto;
-        }
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-        .guidelines {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            pointer-events: none;
-            border: 2px dashed #ff0000;
-        }
-        .guidelines::before {
-            content: '';
-            position: absolute;
-            top: 15%;
-            left: 15%;
-            right: 15%;
-            bottom: 35%;
-            border: 1px dashed #00ff00;
-        }
-        .guidelines::after {
-            content: 'Align face within green box (60-70% of height)';
-            position: absolute;
-            top: 5%;
-            left: 50%;
-            transform: translateX(-50%);
-            color: #ff0000;
-            font-size: 14px;
-            background: rgba(255, 255, 255, 0.8);
-            padding: 2px 5px;
-        }
-        .toast {
-            position: fixed;
-            bottom: 20px;
-            right: 20px;
-            padding: 12px 24px;
-            border-radius: 8px;
-            color: white;
-            opacity: 0;
-            transition: opacity 0.3s;
-            z-index: 1000;
-        }
-        .toast.success {
-            background: #10b981;
-        }
-        .toast.error {
-            background: #ef4444;
         }
     </style>
 </head>
-<body class="min-h-screen font-sans">
-    <div class="container mx-auto p-6 max-w-4xl">
-        <header class="text-center mb-12">
-            <h1 class="text-5xl font-bold tracking-tight">Indian Passport Photo Converter</h1>
-            <p class="text-gray-600 mt-4 text-xl">Convert your photo to Indian passport size (35mm x 45mm, 300 DPI)</p>
-        </header>
-
-        <main class="bg-white shadow-2xl rounded-xl p-10">
-            <div id="dropZone" role="region" aria-label="Drag and drop image here">
-                <p class="text-gray-600 text-lg font-medium">Drag & drop your photo or click to upload</p>
-                <p class="text-sm text-gray-500 mt-2">Supported formats: JPG, PNG (Max 10MB)</p>
-                <input type="file" id="imageInput" accept="image/*" class="hidden" aria-label="Upload image">
+<body class="bg-gray-100 flex justify-center items-center min-h-screen p-4">
+    <div class="bg-white rounded-lg shadow-xl p-8 w-full max-w-md">
+        <h1 class="text-2xl font-semibold text-blue-600 text-center mb-6">Passport Photo Converter</h1>
+        <div class="mb-4">
+            <label for="imageUpload" class="inline-flex items-center justify-center w-full px-4 py-2 bg-indigo-600 text-white font-medium rounded-md shadow-md cursor-pointer hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-opacity-50 transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" class="mr-2 h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v6a1 1 0 001 1h14a1 1 0 001-1v-6m-1-11h-4m-4 0H6m-3 6h12" />
+                </svg>
+                <span>Upload Image</span>
+                <input id="imageUpload" type="file" accept="image/*" class="hidden">
+            </label>
+            <p id="file-name" class="mt-2 text-sm text-gray-500"></p>
+            <div class="flex items-center space-x-4 mt-4">
+                <div class="flex-1">
+                    <label for="width" class="block text-gray-700 text-sm font-bold mb-2">Width (cm)</label>
+                    <input type="number" id="width" value="3.5" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline">
+                </div>
+                <div class="flex-1">
+                    <label for="height" class="block text-gray-700 text-sm font-bold mb-2">Height (cm)</label>
+                    <input type="number" id="height" value="4.5" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline">
+                </div>
             </div>
+            <div class="flex-1 mt-4">
+                <label for="dpi" class="block text-gray-700 text-sm font-bold mb-2">DPI</label>
+                <input type="number" id="dpi" value="300" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline">
+            </div>
+        </div>
+        <div id="image-preview-container" class="hidden mb-4">
+            <img id="image-preview" src="#" alt="Image Preview" class="mx-auto rounded-md border border-gray-200 max-h-60">
+        </div>
+        <button id="convertBtn" class="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline w-full">
+            Convert to Passport Size
+        </button>
+        <div id="loading" class="hidden mt-4 text-center">
+            <svg class="animate-spin h-5 w-5 mr-3 text-blue-500 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <p>Processing...</p>
+        </div>
+        <div id="error-message" class="text-red-500 text-xs italic mt-4 text-center"></div>
+        <div id="download-link-container" class="hidden mt-6 text-center">
+            <a id="download-link" href="#" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline" download>
+                Download Image
+            </a>
+        </div>
+    </div>
 
-            <div id="cropperContainer" class="cropper-container relative hidden">
-                <img id="imageToCrop"
+    <script>
+    const imageUpload = document.getElementById('imageUpload');
+    const imagePreview = document.getElementById('image-preview');
+    const imagePreviewContainer = document.getElementById('image-preview-container');
+    const convertBtn = document.getElementById('convertBtn');
+    const loadingIndicator = document.getElementById('loading');
+    const downloadLink = document.getElementById('download-link');
+    const downloadLinkContainer = document.getElementById('download-link-container');
+    const widthInput = document.getElementById('width');
+    const heightInput = document.getElementById('height');
+    const dpiInput = document.getElementById('dpi');
+    const errorMessage = document.getElementById('error-message');
+    const fileNameDisplay = document.getElementById('file-name');
+
+    imageUpload.addEventListener('change', function(event) {
+        const file = event.target.files[0];
+
+        if (file) {
+            fileNameDisplay.textContent = `Selected file: ${file.name}`;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                imagePreview.src = e.target.result;
+                imagePreviewContainer.classList.remove('hidden');
+                convertBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+                convertBtn.classList.add('hover:bg-green-700', 'cursor-pointer');
+                convertBtn.disabled = false;
+            }
+            reader.readAsDataURL(file);
+        } else {
+            fileNameDisplay.textContent = '';
+            imagePreview.src = '#';
+            imagePreviewContainer.classList.add('hidden');
+            convertBtn.classList.add('opacity-50', 'cursor-not-allowed');
+            convertBtn.classList.remove('hover:bg-green-700', 'cursor-pointer');
+            convertBtn.disabled = true;
+        }
+    });
+
+    convertBtn.addEventListener('click', async function() {
+        const file = imageUpload.files[0];
+        const targetWidthCm = parseFloat(widthInput.value);
+        const targetHeightCm = parseFloat(heightInput.value);
+        const dpi = parseInt(dpiInput.value);
+
+        if (!file) {
+            errorMessage.textContent = "Please upload an image.";
+            return;
+        }
+        if (isNaN(targetWidthCm) || targetWidthCm <= 0 || isNaN(targetHeightCm) || targetHeightCm <= 0 || isNaN(dpi) || dpi <= 0) {
+            errorMessage.textContent = "Please enter valid width, height, and DPI values.";
+            return;
+        }
+
+        errorMessage.textContent = '';
+        loadingIndicator.classList.remove('hidden');
+        convertBtn.classList.add('opacity-50', 'cursor-not-allowed');
+        convertBtn.disabled = true;
+        downloadLinkContainer.classList.add('hidden');
+
+        try {
+            const formData = new FormData();
+            formData.append('image', file);
+            formData.append('width_cm', targetWidthCm.toString());
+            formData.append('height_cm', targetHeightCm.toString());
+            formData.append('dpi', dpi.toString());
+
+            const response = await fetch('/convert', { //  Ensure your server endpoint is '/convert'
+                method: 'POST',
+                body: formData,
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const blob = await response.blob();
+            const url = URL.createObjectURL(blob);
+            downloadLink.href = url;
+            downloadLink.download = 'passport_photo.png';
+            downloadLinkContainer.classList.remove('hidden');
+            loadingIndicator.classList.add('hidden');
+            convertBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+            convertBtn.disabled = false;
+
+        } catch (error) {
+            console.error('Error:', error);
+            errorMessage.textContent = "An error occurred during processing. Please try again.";
+            loadingIndicator.classList.add('hidden');
+            convertBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+            convertBtn.disabled = false;
+        }
+    });
+    </script>
+</body>
+</html>
