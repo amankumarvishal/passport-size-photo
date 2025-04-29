@@ -1,6 +1,3 @@
-// ... existing code ...
-
-<script>
     // Initialize variables
     let originalImage = null;
     let processedImage = null;
@@ -30,6 +27,8 @@
             showLoading("Loading AI model...");
             // Wait for TensorFlow.js to be ready
             await tf.ready();
+            console.log("TensorFlow.js is ready");
+            
             // Load the BodyPix model
             net = await bodyPix.load({
                 architecture: 'MobileNetV1',
@@ -37,9 +36,9 @@
                 multiplier: 0.75,
                 quantBytes: 2
             });
+            console.log("BodyPix model loaded");
             hideLoading();
             updateStatus("AI model loaded successfully");
-            console.log("Model loaded successfully");
         } catch (error) {
             console.error("Error loading model:", error);
             hideLoading();
@@ -48,10 +47,33 @@
     }
 
     // Initialize on page load
-    document.addEventListener('DOMContentLoaded', () => {
-        console.log("Page loaded, initializing...");
+    window.addEventListener('load', () => {
+        console.log("Window loaded, initializing...");
         loadModel();
     });
+
+    // Display image on canvas
+    function displayImage(image, canvas, ctx) {
+        const maxWidth = 400;
+        const maxHeight = 400;
+        
+        let width = image.width;
+        let height = image.height;
+        
+        if (width > maxWidth) {
+            height = (maxWidth / width) * height;
+            width = maxWidth;
+        }
+        
+        if (height > maxHeight) {
+            width = (maxHeight / height) * width;
+            height = maxHeight;
+        }
+        
+        canvas.width = width;
+        canvas.height = height;
+        ctx.drawImage(image, 0, 0, width, height);
+    }
 
     // File input change event
     photoInput.addEventListener('change', function(e) {
@@ -163,5 +185,29 @@
         }
     });
 
+    // Helper functions
+    function showLoading(message = "Processing...") {
+        loadingText.textContent = message;
+        loadingIndicator.style.display = 'block';
+        disableButtons(true);
+    }
+
+    function hideLoading() {
+        loadingIndicator.style.display = 'none';
+        disableButtons(false);
+    }
+
+    function disableButtons(disabled) {
+        removeBgBtn.disabled = disabled;
+        cropBtn.disabled = disabled;
+        downloadBtn.disabled = disabled;
+        printBtn.disabled = disabled;
+    }
+
+    function updateStatus(message, isError = false) {
+        statusMessage.textContent = message;
+        statusMessage.style.color = isError ? '#e74c3c' : '#7f8c8d';
+    }
+
     // ... rest of existing code ...
-</script>
+</script> 
