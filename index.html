@@ -5,18 +5,20 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Indian Passport Photo Converter</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/image-js@0.34.1/dist/image.min.js"></script>
 </head>
 <body class="bg-gray-100 flex items-center justify-center min-h-screen">
     <div class="bg-white p-6 rounded-lg shadow-lg w-full max-w-md">
         <h1 class="text-2xl font-bold mb-4 text-center">Indian Passport Photo Converter</h1>
         <input type="file" id="imageInput" accept="image/*" class="mb-4 w-full p-2 border rounded">
         <div class="flex justify-between mb-4">
-            <button id="removeBgBtn" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">Remove Background</button>
-            <button id="convertBtn" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600">Convert to Passport Size</button>
+            <button id="removeBgBtn" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 disabled:bg-blue-300" disabled>Remove Background</button>
+            <button id="convertBtn" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 disabled:bg-green-300" disabled>Convert to Passport Size</button>
         </div>
         <div class="flex justify-center mb-4">
             <canvas id="previewCanvas" class="border"></canvas>
         </div>
+        <p id="status" class="text-center text-gray-600 mb-4 hidden">Processing...</p>
         <a id="downloadLink" class="hidden bg-yellow-500 text-white px-4 py-2 rounded hover:bg-yellow-600 text-center block">Download Passport Photo</a>
     </div>
 
@@ -26,46 +28,85 @@
         const convertBtn = document.getElementById('convertBtn');
         const previewCanvas = document.getElementById('previewCanvas');
         const downloadLink = document.getElementById('downloadLink');
+        const status = document.getElementById('status');
         const ctx = previewCanvas.getContext('2d');
         let img = new Image();
 
-        // Load image when selected
+        // Enable buttons when an image is loaded
         imageInput.addEventListener('change', (e) => {
             const file = e.target.files[0];
-            if (file) {
-                const reader = new FileReader();
-                reader.onload = (event) => {
-                    img.src = event.target.result;
-                    img.onload = () => {
-                        previewCanvas.width = img.width;
-                        previewCanvas.height = img.height;
-                        ctx.drawImage(img, 0, 0);
-                        downloadLink.classList.add('hidden');
-                    };
-                };
-                reader.readAsDataURL(file);
+            if (!file) return;
+
+            if (!file.type.startsWith('image/')) {
+                alert('Please upload a valid image file.');
+                return;
             }
+
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                img.src = event.target.result;
+                img.onload = () => {
+                    previewCanvas.width = img.width;
+                    previewCanvas.height = img.height;
+                    ctx.drawImage(img, 0, 0);
+                    removeBgBtn.disabled = false;
+                    convertBtn.disabled = false;
+                    downloadLink.classList.add('hidden');
+                    status.classList.add('hidden');
+                };
+            };
+            reader.onerror = () => alert('Error reading the image file.');
+            reader.readAsDataURL(file);
         });
 
-        // Remove background (simple thresholding)
-        removeBgBtn.addEventListener('click', () => {
+        // Remove background using image-js
+        removeBgBtn.addEventListener('click', async () => {
             if (!img.src) return alert('Please upload an image first.');
 
-            const imageData = ctx.getImageData(0, 0, previewCanvas.width, previewCanvas.height);
-            const data = imageData.data;
+            try {
+                removeBgBtn.disabled = true;
+                status.classList.remove('hidden');
+                status.textContent = 'Removing background...';
 
-            // Simple background removal: make near-white pixels transparent
-            for (let i = 0; i < data.length; i += 4) {
-                const r = data[i];
-                const g = data[i + 1];
-                const b = data[i + 2];
-                // If pixel is close to white (adjust threshold as needed)
-                if (r > 200 && g > 200 && b > 200) {
-                    data[i + 3] = 0; // Set alpha to 0 (transparent)
+                // Convert canvas to image-js format
+                const imageDataUrl = previewCanvas.toDataURL('image/png');
+                const image = await Image.load(imageDataUrl);
+
+                // Convert to grayscale and apply threshold for simple segmentation
+                const grey = image.grey();
+                const mask = grey.threshold({ algorithm: 'otsu' });
+
+                // Create a new image with transparent background
+                const result = image.rgba8();
+                for (let x = 0; x < result.width; x++) {
+                    for (let y = 0; y < result.height; y++) {
+                        if (mask.getBit(x, y) === 0) {
+                            result.setPixel(x, y, [0, 0, 0, 0]); // Transparent
+                        }
+                    }
                 }
-            }
 
-            ctx.putImageData(imageData, 0, 0);
+                // Update canvas with the result
+                const resultCanvas = document.createElement('canvas');
+                resultCanvas.width = result.width;
+                resultCanvas.height = result.height;
+                const resultCtx = resultCanvas.getContext('2d');
+                const resultImageData = resultCtx.createImageData(result.width, result.height);
+                resultImageData.data.set(result.data);
+                resultCtx.putImageData(resultImageData, 0, 0);
+
+                previewCanvas.width = result.width;
+                previewCanvas.height = result.height;
+                ctx.drawImage(resultCanvas, 0, 0);
+
+                status.classList.add('hidden');
+                removeBgBtn.disabled = false;
+            } catch (error) {
+                console.error(error);
+                alert('Error removing background. Try a different image.');
+                status.classList.add('hidden');
+                removeBgBtn.disabled = false;
+            }
         });
 
         // Convert to Indian passport size (3.5 cm x 4.5 cm, ~413 x 531 pixels at 300 DPI)
@@ -75,13 +116,17 @@
             const passportWidth = 413; // 3.5 cm at 300 DPI
             const passportHeight = 531; // 4.5 cm at 300 DPI
 
+            convertBtn.disabled = true;
+            status.classList.remove('hidden');
+            status.textContent = 'Converting to passport size...';
+
             // Create a temporary canvas for resizing
             const tempCanvas = document.createElement('canvas');
             tempCanvas.width = passportWidth;
             tempCanvas.height = passportHeight;
             const tempCtx = tempCanvas.getContext('2d');
 
-            // Draw the current canvas content (with background removed) to the passport size
+            // Draw the current canvas content to the passport size
             tempCtx.drawImage(previewCanvas, 0, 0, passportWidth, passportHeight);
 
             // Update preview canvas
@@ -93,6 +138,9 @@
             downloadLink.href = previewCanvas.toDataURL('image/jpeg');
             downloadLink.download = 'passport_photo.jpg';
             downloadLink.classList.remove('hidden');
+
+            status.classList.add('hidden');
+            convertBtn.disabled = false;
         });
     </script>
 </body>
