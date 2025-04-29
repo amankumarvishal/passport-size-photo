@@ -3,30 +3,24 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Indian Passport Photo Converter</title>
+    <title>Background Changer</title>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-gray-100 flex items-center justify-center min-h-screen">
     <div class="bg-white p-6 rounded-lg shadow-lg w-full max-w-md">
-        <h1 class="text-2xl font-bold mb-4 text-center">Indian Passport Photo Converter</h1>
-        <input type="text" id="apiKey" placeholder="Enter remove.bg API Key (optional)" class="mb-4 w-full p-2 border rounded">
+        <h1 class="text-2xl font-bold mb-4 text-center">Background Changer</h1>
         <input type="file" id="imageInput" accept="image/*" class="mb-4 w-full p-2 border rounded">
-        <div class="flex justify-between mb-4">
-            <button id="removeBgBtn" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 disabled:bg-blue-300" disabled>Remove Background</button>
-            <button id="convertBtn" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 disabled:bg-green-300" disabled>Convert to Passport Size</button>
-        </div>
-        <div class="flex justify-center mb-4">
+        <button id="changeBgBtn" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 disabled:bg-blue-300 w-full" disabled>Change Background to Blue</button>
+        <div class="flex justify-center mb-4 mt-4">
             <canvas id="previewCanvas" class="border"></canvas>
         </div>
         <p id="status" class="text-center text-gray-600 mb-4 hidden">Processing...</p>
-        <a id="downloadLink" class="hidden bg-yellow-500 text-white px-4 py-2 rounded hover:bg-yellow-600 text-center block">Download Passport Photo</a>
+        <a id="downloadLink" class="hidden bg-yellow-500 text-white px-4 py-2 rounded hover:bg-yellow-600 text-center block">Download Image</a>
     </div>
 
     <script>
         const imageInput = document.getElementById('imageInput');
-        const apiKeyInput = document.getElementById('apiKey');
-        const removeBgBtn = document.getElementById('removeBgBtn');
-        const convertBtn = document.getElementById('convertBtn');
+        const changeBgBtn = document.getElementById('changeBgBtn');
         const previewCanvas = document.getElementById('previewCanvas');
         const downloadLink = document.getElementById('downloadLink');
         const status = document.getElementById('status');
@@ -34,7 +28,7 @@
         let img = new Image();
         let originalImageData = null;
 
-        // Load image and enable buttons
+        // Load image and enable button
         imageInput.addEventListener('change', (e) => {
             const file = e.target.files[0];
             if (!file) return;
@@ -60,8 +54,7 @@
                     previewCanvas.height = height;
                     ctx.drawImage(img, 0, 0, width, height);
                     originalImageData = ctx.getImageData(0, 0, width, height);
-                    removeBgBtn.disabled = false;
-                    convertBtn.disabled = false;
+                    changeBgBtn.disabled = false;
                     downloadLink.classList.add('hidden');
                     status.classList.add('hidden');
                 };
@@ -70,140 +63,110 @@
             reader.readAsDataURL(file);
         });
 
-        // Remove background
-        removeBgBtn.addEventListener('click', async () => {
+        // Change background to blue
+        changeBgBtn.addEventListener('click', () => {
             if (!img.src || !originalImageData) return alert('Please upload an image first.');
 
-            removeBgBtn.disabled = true;
-            status.classList.remove('hidden');
-            status.textContent = 'Removing background...';
+            try {
+                changeBgBtn.disabled = true;
+                status.classList.remove('hidden');
+                status.textContent = 'Changing background...';
 
-            const apiKey = apiKeyInput.value.trim();
+                const imageData = ctx.getImageData(0, 0, previewCanvas.width, previewCanvas.height);
+                const data = imageData.data;
+                const width = previewCanvas.width;
+                const height = previewCanvas.height;
 
-            if (apiKey) {
-                // Use remove.bg API
-                try {
-                    const formData = new FormData();
-                    formData.append('image_file', await fetch(img.src).then(r => r.blob()));
-                    formData.append('size', 'auto');
+                // Protect central region
+                const centerX = width / 2;
+                const centerY = height / 2;
+                const protectRadius = Math.min(width, height) * 0.5; // 50% of image
 
-                    const response = await fetch('https://api.remove.bg/v1.0/removebg', {
-                        method: 'POST',
-                        headers: {
-                            'X-Api-Key': apiKey
-                        },
-                        body: formData
-                    });
-
-                    if (!response.ok) {
-                        throw new Error('API request failed: ' + response.statusText);
-                    }
-
-                    const blob = await response.blob();
-                    const url = URL.createObjectURL(blob);
-                    const newImg = new Image();
-                    newImg.src = url;
-                    newImg.onload = () => {
-                        previewCanvas.width = newImg.width;
-                        previewCanvas.height = newImg.height;
-                        ctx.drawImage(newImg, 0, 0);
-                        URL.revokeObjectURL(url);
-                        status.classList.add('hidden');
-                        removeBgBtn.disabled = false;
-                    };
-                    newImg.onerror = () => {
-                        throw new Error('Error loading processed image.');
-                    };
-                } catch (error) {
-                    console.error(error);
-                    alert('Error using remove.bg API. Check your API key or try the fallback method by leaving the API key blank.');
-                    ctx.putImageData(originalImageData, 0, 0);
-                    status.classList.add('hidden');
-                    removeBgBtn.disabled = false;
+                // Sample border pixels to estimate background color
+                const borderPixels = [];
+                for (let x = 0; x < width; x++) {
+                    borderPixels.push([x, 0], [x, height - 1]);
                 }
-            } else {
-                // Fallback: Simple thresholding for light backgrounds
-                try {
-                    const imageData = ctx.getImageData(0, 0, previewCanvas.width, previewCanvas.height);
-                    const data = imageData.data;
-                    const width = previewCanvas.width;
-                    const height = previewCanvas.height;
+                for (let y = 0; y < height; y++) {
+                    borderPixels.push([0, y], [width - 1, y]);
+                }
 
-                    // Protect central region
-                    const centerX = width / 2;
-                    const centerY = height / 2;
-                    const protectRadius = Math.min(width, height) * 0.4;
+                let rSum = 0, gSum = 0, bSum = 0, count = 0;
+                for (const [x, y] of borderPixels) {
+                    const i = (y * width + x) * 4;
+                    rSum += data[i];
+                    gSum += data[i + 1];
+                    bSum += data[i + 2];
+                    count++;
+                }
+                const bgColor = [rSum / count, gSum / count, bSum / count];
 
-                    // Threshold for light backgrounds
-                    for (let y = 0; y < height; y++) {
-                        for (let x = 0; x < width; x++) {
-                            const i = (y * width + x) * 4;
-                            const r = data[i];
-                            const g = data[i + 1];
-                            const b = data[i + 2];
-                            const intensity = 0.299 * r + 0.587 * g + 0.114 * b;
-                            const distToCenter = Math.hypot(x - centerX, y - centerY);
+                // Flood-fill from borders to mark background
+                const background = new Uint8ClampedArray(width * height).fill(0);
+                const queue = borderPixels.slice();
+                while (queue.length) {
+                    const [x, y] = queue.shift();
+                    const i = y * width + x;
+                    if (x < 0 || x >= width || y < 0 || y >= height || background[i]) continue;
 
-                            // Make light pixels outside central region transparent
-                            if (intensity > 200 && distToCenter > protectRadius) {
-                                data[i + 3] = 0;
-                            }
+                    // Check distance to center
+                    const distToCenter = Math.hypot(x - centerX, y - centerY);
+                    if (distToCenter < protectRadius) continue;
+
+                    // Check color similarity to background
+                    const pixelI = i * 4;
+                    const colorDist = Math.hypot(
+                        data[pixelI] - bgColor[0],
+                        data[pixelI + 1] - bgColor[1],
+                        data[pixelI + 2] - bgColor[2]
+                    );
+                    if (colorDist > 60) continue; // Higher threshold for broader capture
+
+                    background[i] = 1;
+                    queue.push([x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]);
+                }
+
+                // Change background to blue (RGB: 0, 102, 204)
+                const blueColor = [0, 102, 204];
+                for (let i = 0; i < data.length; i += 4) {
+                    if (background[i / 4]) {
+                        data[i] = blueColor[0];
+                        data[i + 1] = blueColor[1];
+                        data[i + 2] = blueColor[2];
+                        data[i + 3] = 255; // Opaque
+                    }
+                }
+
+                // Check if subject is preserved
+                let subjectPixels = 0;
+                for (let y = 0; y < height; y++) {
+                    for (let x = 0; x < width; x++) {
+                        const i = (y * width + x) * 4;
+                        if (!background[(y * width + x)]) {
+                            subjectPixels++;
                         }
                     }
-
-                    // Check if subject is preserved
-                    let nonTransparentPixels = 0;
-                    for (let i = 3; i < data.length; i += 4) {
-                        if (data[i] > 0) nonTransparentPixels++;
-                    }
-
-                    if (nonTransparentPixels < width * height * 0.1) {
-                        alert('Subject was removed. Try an image with a light, uniform background or use a remove.bg API key.');
-                        ctx.putImageData(originalImageData, 0, 0);
-                    } else {
-                        ctx.putImageData(imageData, 0, 0);
-                    }
-
-                    status.classList.add('hidden');
-                    removeBgBtn.disabled = false;
-                } catch (error) {
-                    console.error(error);
-                    alert('Error removing background. Try an image with a light background or use a remove.bg API key.');
-                    ctx.putImageData(originalImageData, 0, 0);
-                    status.classList.add('hidden');
-                    removeBgBtn.disabled = false;
                 }
+
+                if (subjectPixels < width * height * 0.2) {
+                    alert('Subject was altered. Please use an image with a uniform background and the subject centered.');
+                    ctx.putImageData(originalImageData, 0, 0);
+                } else {
+                    ctx.putImageData(imageData, 0, 0);
+                    downloadLink.href = previewCanvas.toDataURL('image/png');
+                    downloadLink.download = 'blue_background.png';
+                    downloadLink.classList.remove('hidden');
+                }
+
+                status.classList.add('hidden');
+                changeBgBtn.disabled = false;
+            } catch (error) {
+                console.error(error);
+                alert('Error changing background. Try a smaller image or one with a uniform background.');
+                ctx.putImageData(originalImageData, 0, 0);
+                status.classList.add('hidden');
+                changeBgBtn.disabled = false;
             }
-        });
-
-        // Convert to Indian passport size (3.5 cm x 4.5 cm, ~413 x 531 pixels at 300 DPI)
-        convertBtn.addEventListener('click', () => {
-            if (!img.src) return alert('Please upload an image first.');
-
-            const passportWidth = 413;
-            const passportHeight = 531;
-
-            convertBtn.disabled = true;
-            status.classList.remove('hidden');
-            status.textContent = 'Converting to passport size...';
-
-            const tempCanvas = document.createElement('canvas');
-            tempCanvas.width = passportWidth;
-            tempCanvas.height = passportHeight;
-            const tempCtx = tempCanvas.getContext('2d');
-
-            tempCtx.drawImage(previewCanvas, 0, 0, passportWidth, passportHeight);
-
-            previewCanvas.width = passportWidth;
-            previewCanvas.height = passportHeight;
-            ctx.drawImage(tempCanvas, 0, 0);
-
-            downloadLink.href = previewCanvas.toDataURL('image/jpeg');
-            downloadLink.download = 'passport_photo.jpg';
-            downloadLink.classList.remove('hidden');
-
-            status.classList.add('hidden');
-            convertBtn.disabled = false;
         });
     </script>
 </body>
