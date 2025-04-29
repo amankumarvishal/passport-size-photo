@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Indian Passport Photo Converter</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/image-js@0.34.1/dist/image.min.js"></script>
 </head>
 <body class="bg-gray-100 flex items-center justify-center min-h-screen">
     <div class="bg-white p-6 rounded-lg shadow-lg w-full max-w-md">
@@ -32,13 +31,13 @@
         const ctx = previewCanvas.getContext('2d');
         let img = new Image();
 
-        // Enable buttons when an image is loaded
+        // Load image and enable buttons
         imageInput.addEventListener('change', (e) => {
             const file = e.target.files[0];
             if (!file) return;
 
             if (!file.type.startsWith('image/')) {
-                alert('Please upload a valid image file.');
+                alert('Please upload a valid image file (e.g., JPEG, PNG).');
                 return;
             }
 
@@ -46,9 +45,17 @@
             reader.onload = (event) => {
                 img.src = event.target.result;
                 img.onload = () => {
-                    previewCanvas.width = img.width;
-                    previewCanvas.height = img.height;
-                    ctx.drawImage(img, 0, 0);
+                    const maxSize = 1024;
+                    let width = img.width;
+                    let height = img.height;
+                    if (width > maxSize || height > maxSize) {
+                        const ratio = Math.min(maxSize / width, maxSize / height);
+                        width *= ratio;
+                        height *= ratio;
+                    }
+                    previewCanvas.width = width;
+                    previewCanvas.height = height;
+                    ctx.drawImage(img, 0, 0, width, height);
                     removeBgBtn.disabled = false;
                     convertBtn.disabled = false;
                     downloadLink.classList.add('hidden');
@@ -59,8 +66,8 @@
             reader.readAsDataURL(file);
         });
 
-        // Remove background using image-js
-        removeBgBtn.addEventListener('click', async () => {
+        // Remove background using color clustering and edge detection
+        removeBgBtn.addEventListener('click', () => {
             if (!img.src) return alert('Please upload an image first.');
 
             try {
@@ -68,42 +75,99 @@
                 status.classList.remove('hidden');
                 status.textContent = 'Removing background...';
 
-                // Convert canvas to image-js format
-                const imageDataUrl = previewCanvas.toDataURL('image/png');
-                const image = await Image.load(imageDataUrl);
+                const imageData = ctx.getImageData(0, 0, previewCanvas.width, previewCanvas.height);
+                const data = imageData.data;
+                const width = previewCanvas.width;
+                const height = previewCanvas.height;
 
-                // Convert to grayscale and apply threshold for simple segmentation
-                const grey = image.grey();
-                const mask = grey.threshold({ algorithm: 'otsu' });
+                // Convert to grayscale and compute edges
+                const gray = new Uint8ClampedArray(width * height);
+                const edges = new Uint8ClampedArray(width * height);
+                for (let i = 0; i < data.length; i += 4) {
+                    const r = data[i];
+                    const g = data[i + 1];
+                    const b = data[i + 2];
+                    gray[i / 4] = 0.299 * r + 0.587 * g + 0.114 * b;
+                }
 
-                // Create a new image with transparent background
-                const result = image.rgba8();
-                for (let x = 0; x < result.width; x++) {
-                    for (let y = 0; y < result.height; y++) {
-                        if (mask.getBit(x, y) === 0) {
-                            result.setPixel(x, y, [0, 0, 0, 0]); // Transparent
+                // Edge detection
+                for (let y = 1; y < height - 1; y++) {
+                    for (let x = 1; x < width - 1; x++) {
+                        const i = y * width + x;
+                        const gradient = Math.abs(gray[i - width] - gray[i + width]) +
+                                        Math.abs(gray[i - 1] - gray[i + 1]);
+                        edges[i] = gradient > 30 ? 1 : 0;
+                    }
+                }
+
+                // Simple color clustering (assume 2 clusters: subject and background)
+                const pixels = [];
+                for (let i = 0; i < data.length; i += 4) {
+                    pixels.push([data[i], data[i + 1], data[i + 2]]);
+                }
+
+                // Initialize two clusters (subject and background)
+                const clusters = [
+                    pixels[Math.floor(Math.random() * pixels.length)],
+                    pixels[Math.floor(Math.random() * pixels.length)]
+                ];
+
+                // K-means clustering (simplified)
+                for (let iter = 0; iter < 5; iter++) {
+                    const assignments = new Uint8ClampedArray(pixels.length);
+                    for (let i = 0; i < pixels.length; i++) {
+                        const dist0 = Math.hypot(pixels[i][0] - clusters[0][0], pixels[i][1] - clusters[0][1], pixels[i][2] - clusters[0][2]);
+                        const dist1 = Math.hypot(pixels[i][0] - clusters[1][0], pixels[i][1] - clusters[1][1], pixels[i][2] - clusters[1][2]);
+                        assignments[i] = dist0 < dist1 ? 0 : 1;
+                    }
+
+                    // Update clusters
+                    const counts = [0, 0];
+                    const sums = [[0, 0, 0], [0, 0, 0]];
+                    for (let i = 0; i < pixels.length; i++) {
+                        const c = assignments[i];
+                        counts[c]++;
+                        for (let j = 0; j < 3; j++) {
+                            sums[c][j] += pixels[i][j];
+                        }
+                    }
+                    for (let c = 0; c < 2; c++) {
+                        if (counts[c] > 0) {
+                            clusters[c] = sums[c].map(v => v / counts[c]);
                         }
                     }
                 }
 
-                // Update canvas with the result
-                const resultCanvas = document.createElement('canvas');
-                resultCanvas.width = result.width;
-                resultCanvas.height = result.height;
-                const resultCtx = resultCanvas.getContext('2d');
-                const resultImageData = resultCtx.createImageData(result.width, result.height);
-                resultImageData.data.set(result.data);
-                resultCtx.putImageData(resultImageData, 0, 0);
+                // Assume cluster with higher average intensity is background
+                const intensities = clusters.map(c => 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2]);
+                const bgCluster = intensities[0] > intensities[1] ? 0 : 1;
 
-                previewCanvas.width = result.width;
-                previewCanvas.height = result.height;
-                ctx.drawImage(resultCanvas, 0, 0);
+                // Protect central region (likely subject)
+                const centerX = width / 2;
+                const centerY = height / 2;
+                const protectRadius = Math.min(width, height) * 0.3;
 
+                // Apply transparency to background
+                for (let y = 0; y < height; y++) {
+                    for (let x = 0; x < width; x++) {
+                        const i = (y * width + x) * 4;
+                        const pixel = [data[i], data[i + 1], data[i + 2]];
+                        const dist = Math.hypot(pixel[0] - clusters[bgCluster][0], pixel[1] - clusters[bgCluster][1], pixel[2] - clusters[bgCluster][2]);
+                        const isEdge = edges[y * width + x];
+                        const distToCenter = Math.hypot(x - centerX, y - centerY);
+
+                        if (dist < 50 && !isEdge && distToCenter > protectRadius) {
+                            data[i + 3] = 0; // Transparent
+                        }
+                    }
+                }
+
+                ctx.putImageData(imageData, 0, 0);
                 status.classList.add('hidden');
                 removeBgBtn.disabled = false;
             } catch (error) {
                 console.error(error);
-                alert('Error removing background. Try a different image.');
+                alert('Error removing background. Try an image with a distinct background or smaller size.');
                 status.classList.add('hidden');
                 removeBgBtn.disabled = false;
             }
@@ -113,28 +177,436 @@
         convertBtn.addEventListener('click', () => {
             if (!img.src) return alert('Please upload an image first.');
 
-            const passportWidth = 413; // 3.5 cm at 300 DPI
-            const passportHeight = 531; // 4.5 cm at 300 DPI
+            const passportWidth = 413;
+            const passportHeight = 531;
 
             convertBtn.disabled = true;
             status.classList.remove('hidden');
             status.textContent = 'Converting to passport size...';
 
-            // Create a temporary canvas for resizing
             const tempCanvas = document.createElement('canvas');
             tempCanvas.width = passportWidth;
             tempCanvas.height = passportHeight;
             const tempCtx = tempCanvas.getContext('2d');
 
-            // Draw the current canvas content to the passport size
             tempCtx.drawImage(previewCanvas, 0, 0, passportWidth, passportHeight);
 
-            // Update preview canvas
             previewCanvas.width = passportWidth;
             previewCanvas.height = passportHeight;
             ctx.drawImage(tempCanvas, 0, 0);
 
-            // Enable download
+            downloadLink.href = previewCanvas.toDataURL('image/jpeg');
+            downloadLink.download = 'passport_photo.jpg';
+            downloadLink.classList.remove('hidden');
+
+            status.classList.add('hidden');
+            convertBtn.disabled = false;
+        });
+    </script>
+</body>
+</html><!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Indian Passport Photo Converter</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen">
+    <div class="bg-white p-6 rounded-lg shadow-lg w-full max-w-md">
+        <h1 class="text-2xl font-bold mb-4 text-center">Indian Passport Photo Converter</h1>
+        <input type="file" id="imageInput" accept="image/*" class="mb-4 w-full p-2 border rounded">
+        <div class="flex justify-between mb-4">
+            <button id="removeBgBtn" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 disabled:bg-blue-300" disabled>Remove Background</button>
+            <button id="convertBtn" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 disabled:bg-green-300" disabled>Convert to Passport Size</button>
+        </div>
+        <div class="flex justify-center mb-4">
+            <canvas id="previewCanvas" class="border"></canvas>
+        </div>
+        <p id="status" class="text-center text-gray-600 mb-4 hidden">Processing...</p>
+        <a id="downloadLink" class="hidden bg-yellow-500 text-white px-4 py-2 rounded hover:bg-yellow-600 text-center block">Download Passport Photo</a>
+    </div>
+
+    <script>
+        const imageInput = document.getElementById('imageInput');
+        const removeBgBtn = document.getElementById('removeBgBtn');
+        const convertBtn = document.getElementById('convertBtn');
+        const previewCanvas = document.getElementById('previewCanvas');
+        const downloadLink = document.getElementById('downloadLink');
+        const status = document.getElementById('status');
+        const ctx = previewCanvas.getContext('2d');
+        let img = new Image();
+
+        // Load image and enable buttons
+        imageInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            if (!file.type.startsWith('image/')) {
+                alert('Please upload a valid image file (e.g., JPEG, PNG).');
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                img.src = event.target.result;
+                img.onload = () => {
+                    const maxSize = 1024;
+                    let width = img.width;
+                    let height = img.height;
+                    if (width > maxSize || height > maxSize) {
+                        const ratio = Math.min(maxSize / width, maxSize / height);
+                        width *= ratio;
+                        height *= ratio;
+                    }
+                    previewCanvas.width = width;
+                    previewCanvas.height = height;
+                    ctx.drawImage(img, 0, 0, width, height);
+                    removeBgBtn.disabled = false;
+                    convertBtn.disabled = false;
+                    downloadLink.classList.add('hidden');
+                    status.classList.add('hidden');
+                };
+            };
+            reader.onerror = () => alert('Error reading the image file.');
+            reader.readAsDataURL(file);
+        });
+
+        // Remove background using color clustering and edge detection
+        removeBgBtn.addEventListener('click', () => {
+            if (!img.src) return alert('Please upload an image first.');
+
+            try {
+                removeBgBtn.disabled = true;
+                status.classList.remove('hidden');
+                status.textContent = 'Removing background...';
+
+                const imageData = ctx.getImageData(0, 0, previewCanvas.width, previewCanvas.height);
+                const data = imageData.data;
+                const width = previewCanvas.width;
+                const height = previewCanvas.height;
+
+                // Convert to grayscale and compute edges
+                const gray = new Uint8ClampedArray(width * height);
+                const edges = new Uint8ClampedArray(width * height);
+                for (let i = 0; i < data.length; i += 4) {
+                    const r = data[i];
+                    const g = data[i + 1];
+                    const b = data[i + 2];
+                    gray[i / 4] = 0.299 * r + 0.587 * g + 0.114 * b;
+                }
+
+                // Edge detection
+                for (let y = 1; y < height - 1; y++) {
+                    for (let x = 1; x < width - 1; x++) {
+                        const i = y * width + x;
+                        const gradient = Math.abs(gray[i - width] - gray[i + width]) +
+                                        Math.abs(gray[i - 1] - gray[i + 1]);
+                        edges[i] = gradient > 30 ? 1 : 0;
+                    }
+                }
+
+                // Simple color clustering (assume 2 clusters: subject and background)
+                const pixels = [];
+                for (let i = 0; i < data.length; i += 4) {
+                    pixels.push([data[i], data[i + 1], data[i + 2]]);
+                }
+
+                // Initialize two clusters (subject and background)
+                const clusters = [
+                    pixels[Math.floor(Math.random() * pixels.length)],
+                    pixels[Math.floor(Math.random() * pixels.length)]
+                ];
+
+                // K-means clustering (simplified)
+                for (let iter = 0; iter < 5; iter++) {
+                    const assignments = new Uint8ClampedArray(pixels.length);
+                    for (let i = 0; i < pixels.length; i++) {
+                        const dist0 = Math.hypot(pixels[i][0] - clusters[0][0], pixels[i][1] - clusters[0][1], pixels[i][2] - clusters[0][2]);
+                        const dist1 = Math.hypot(pixels[i][0] - clusters[1][0], pixels[i][1] - clusters[1][1], pixels[i][2] - clusters[1][2]);
+                        assignments[i] = dist0 < dist1 ? 0 : 1;
+                    }
+
+                    // Update clusters
+                    const counts = [0, 0];
+                    const sums = [[0, 0, 0], [0, 0, 0]];
+                    for (let i = 0; i < pixels.length; i++) {
+                        const c = assignments[i];
+                        counts[c]++;
+                        for (let j = 0; j < 3; j++) {
+                            sums[c][j] += pixels[i][j];
+                        }
+                    }
+                    for (let c = 0; c < 2; c++) {
+                        if (counts[c] > 0) {
+                            clusters[c] = sums[c].map(v => v / counts[c]);
+                        }
+                    }
+                }
+
+                // Assume cluster with higher average intensity is background
+                const intensities = clusters.map(c => 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2]);
+                const bgCluster = intensities[0] > intensities[1] ? 0 : 1;
+
+                // Protect central region (likely subject)
+                const centerX = width / 2;
+                const centerY = height / 2;
+                const protectRadius = Math.min(width, height) * 0.3;
+
+                // Apply transparency to background
+                for (let y = 0; y < height; y++) {
+                    for (let x = 0; x < width; x++) {
+                        const i = (y * width + x) * 4;
+                        const pixel = [data[i], data[i + 1], data[i + 2]];
+                        const dist = Math.hypot(pixel[0] - clusters[bgCluster][0], pixel[1] - clusters[bgCluster][1], pixel[2] - clusters[bgCluster][2]);
+                        const isEdge = edges[y * width + x];
+                        const distToCenter = Math.hypot(x - centerX, y - centerY);
+
+                        if (dist < 50 && !isEdge && distToCenter > protectRadius) {
+                            data[i + 3] = 0; // Transparent
+                        }
+                    }
+                }
+
+                ctx.putImageData(imageData, 0, 0);
+                status.classList.add('hidden');
+                removeBgBtn.disabled = false;
+            } catch (error) {
+                console.error(error);
+                alert('Error removing background. Try an image with a distinct background or smaller size.');
+                status.classList.add('hidden');
+                removeBgBtn.disabled = false;
+            }
+        });
+
+        // Convert to Indian passport size (3.5 cm x 4.5 cm, ~413 x 531 pixels at 300 DPI)
+        convertBtn.addEventListener('click', () => {
+            if (!img.src) return alert('Please upload an image first.');
+
+            const passportWidth = 413;
+            const passportHeight = 531;
+
+            convertBtn.disabled = true;
+            status.classList.remove('hidden');
+            status.textContent = 'Converting to passport size...';
+
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = passportWidth;
+            tempCanvas.height = passportHeight;
+            const tempCtx = tempCanvas.getContext('2d');
+
+            tempCtx.drawImage(previewCanvas, 0, 0, passportWidth, passportHeight);
+
+            previewCanvas.width = passportWidth;
+            previewCanvas.height = passportHeight;
+            ctx.drawImage(tempCanvas, 0, 0);
+
+            downloadLink.href = previewCanvas.toDataURL('image/jpeg');
+            downloadLink.download = 'passport_photo.jpg';
+            downloadLink.classList.remove('hidden');
+
+            status.classList.add('hidden');
+            convertBtn.disabled = false;
+        });
+    </script>
+</body>
+</html><!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Indian Passport Photo Converter</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen">
+    <div class="bg-white p-6 rounded-lg shadow-lg w-full max-w-md">
+        <h1 class="text-2xl font-bold mb-4 text-center">Indian Passport Photo Converter</h1>
+        <input type="file" id="imageInput" accept="image/*" class="mb-4 w-full p-2 border rounded">
+        <div class="flex justify-between mb-4">
+            <button id="removeBgBtn" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 disabled:bg-blue-300" disabled>Remove Background</button>
+            <button id="convertBtn" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 disabled:bg-green-300" disabled>Convert to Passport Size</button>
+        </div>
+        <div class="flex justify-center mb-4">
+            <canvas id="previewCanvas" class="border"></canvas>
+        </div>
+        <p id="status" class="text-center text-gray-600 mb-4 hidden">Processing...</p>
+        <a id="downloadLink" class="hidden bg-yellow-500 text-white px-4 py-2 rounded hover:bg-yellow-600 text-center block">Download Passport Photo</a>
+    </div>
+
+    <script>
+        const imageInput = document.getElementById('imageInput');
+        const removeBgBtn = document.getElementById('removeBgBtn');
+        const convertBtn = document.getElementById('convertBtn');
+        const previewCanvas = document.getElementById('previewCanvas');
+        const downloadLink = document.getElementById('downloadLink');
+        const status = document.getElementById('status');
+        const ctx = previewCanvas.getContext('2d');
+        let img = new Image();
+
+        // Load image and enable buttons
+        imageInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            if (!file.type.startsWith('image/')) {
+                alert('Please upload a valid image file (e.g., JPEG, PNG).');
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                img.src = event.target.result;
+                img.onload = () => {
+                    const maxSize = 1024;
+                    let width = img.width;
+                    let height = img.height;
+                    if (width > maxSize || height > maxSize) {
+                        const ratio = Math.min(maxSize / width, maxSize / height);
+                        width *= ratio;
+                        height *= ratio;
+                    }
+                    previewCanvas.width = width;
+                    previewCanvas.height = height;
+                    ctx.drawImage(img, 0, 0, width, height);
+                    removeBgBtn.disabled = false;
+                    convertBtn.disabled = false;
+                    downloadLink.classList.add('hidden');
+                    status.classList.add('hidden');
+                };
+            };
+            reader.onerror = () => alert('Error reading the image file.');
+            reader.readAsDataURL(file);
+        });
+
+        // Remove background using color clustering and edge detection
+        removeBgBtn.addEventListener('click', () => {
+            if (!img.src) return alert('Please upload an image first.');
+
+            try {
+                removeBgBtn.disabled = true;
+                status.classList.remove('hidden');
+                status.textContent = 'Removing background...';
+
+                const imageData = ctx.getImageData(0, 0, previewCanvas.width, previewCanvas.height);
+                const data = imageData.data;
+                const width = previewCanvas.width;
+                const height = previewCanvas.height;
+
+                // Convert to grayscale and compute edges
+                const gray = new Uint8ClampedArray(width * height);
+                const edges = new Uint8ClampedArray(width * height);
+                for (let i = 0; i < data.length; i += 4) {
+                    const r = data[i];
+                    const g = data[i + 1];
+                    const b = data[i + 2];
+                    gray[i / 4] = 0.299 * r + 0.587 * g + 0.114 * b;
+                }
+
+                // Edge detection
+                for (let y = 1; y < height - 1; y++) {
+                    for (let x = 1; x < width - 1; x++) {
+                        const i = y * width + x;
+                        const gradient = Math.abs(gray[i - width] - gray[i + width]) +
+                                        Math.abs(gray[i - 1] - gray[i + 1]);
+                        edges[i] = gradient > 30 ? 1 : 0;
+                    }
+                }
+
+                // Simple color clustering (assume 2 clusters: subject and background)
+                const pixels = [];
+                for (let i = 0; i < data.length; i += 4) {
+                    pixels.push([data[i], data[i + 1], data[i + 2]]);
+                }
+
+                // Initialize two clusters (subject and background)
+                const clusters = [
+                    pixels[Math.floor(Math.random() * pixels.length)],
+                    pixels[Math.floor(Math.random() * pixels.length)]
+                ];
+
+                // K-means clustering (simplified)
+                for (let iter = 0; iter < 5; iter++) {
+                    const assignments = new Uint8ClampedArray(pixels.length);
+                    for (let i = 0; i < pixels.length; i++) {
+                        const dist0 = Math.hypot(pixels[i][0] - clusters[0][0], pixels[i][1] - clusters[0][1], pixels[i][2] - clusters[0][2]);
+                        const dist1 = Math.hypot(pixels[i][0] - clusters[1][0], pixels[i][1] - clusters[1][1], pixels[i][2] - clusters[1][2]);
+                        assignments[i] = dist0 < dist1 ? 0 : 1;
+                    }
+
+                    // Update clusters
+                    const counts = [0, 0];
+                    const sums = [[0, 0, 0], [0, 0, 0]];
+                    for (let i = 0; i < pixels.length; i++) {
+                        const c = assignments[i];
+                        counts[c]++;
+                        for (let j = 0; j < 3; j++) {
+                            sums[c][j] += pixels[i][j];
+                        }
+                    }
+                    for (let c = 0; c < 2; c++) {
+                        if (counts[c] > 0) {
+                            clusters[c] = sums[c].map(v => v / counts[c]);
+                        }
+                    }
+                }
+
+                // Assume cluster with higher average intensity is background
+                const intensities = clusters.map(c => 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2]);
+                const bgCluster = intensities[0] > intensities[1] ? 0 : 1;
+
+                // Protect central region (likely subject)
+                const centerX = width / 2;
+                const centerY = height / 2;
+                const protectRadius = Math.min(width, height) * 0.3;
+
+                // Apply transparency to background
+                for (let y = 0; y < height; y++) {
+                    for (let x = 0; x < width; x++) {
+                        const i = (y * width + x) * 4;
+                        const pixel = [data[i], data[i + 1], data[i + 2]];
+                        const dist = Math.hypot(pixel[0] - clusters[bgCluster][0], pixel[1] - clusters[bgCluster][1], pixel[2] - clusters[bgCluster][2]);
+                        const isEdge = edges[y * width + x];
+                        const distToCenter = Math.hypot(x - centerX, y - centerY);
+
+                        if (dist < 50 && !isEdge && distToCenter > protectRadius) {
+                            data[i + 3] = 0; // Transparent
+                        }
+                    }
+                }
+
+                ctx.putImageData(imageData, 0, 0);
+                status.classList.add('hidden');
+                removeBgBtn.disabled = false;
+            } catch (error) {
+                console.error(error);
+                alert('Error removing background. Try an image with a distinct background or smaller size.');
+                status.classList.add('hidden');
+                removeBgBtn.disabled = false;
+            }
+        });
+
+        // Convert to Indian passport size (3.5 cm x 4.5 cm, ~413 x 531 pixels at 300 DPI)
+        convertBtn.addEventListener('click', () => {
+            if (!img.src) return alert('Please upload an image first.');
+
+            const passportWidth = 413;
+            const passportHeight = 531;
+
+            convertBtn.disabled = true;
+            status.classList.remove('hidden');
+            status.textContent = 'Converting to passport size...';
+
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = passportWidth;
+            tempCanvas.height = passportHeight;
+            const tempCtx = tempCanvas.getContext('2d');
+
+            tempCtx.drawImage(previewCanvas, 0, 0, passportWidth, passportHeight);
+
+            previewCanvas.width = passportWidth;
+            previewCanvas.height = passportHeight;
+            ctx.drawImage(tempCanvas, 0, 0);
+
             downloadLink.href = previewCanvas.toDataURL('image/jpeg');
             downloadLink.download = 'passport_photo.jpg';
             downloadLink.classList.remove('hidden');
