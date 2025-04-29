@@ -52,9 +52,9 @@
         method: 'POST',
         body: formData
       })
-      .then(response => response.blob())
-      .then(blob => {
-        const imageUrl = URL.createObjectURL(blob);
+      .then(response => response.json())
+      .then(data => {
+        const imageUrl = data.imageUrl;
         const outputContainer = document.getElementById('output-container');
         const outputImage = document.createElement('img');
         outputImage.src = imageUrl;
