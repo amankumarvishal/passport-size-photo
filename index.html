@@ -3,171 +3,22 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Background Changer</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-</head>
-<body class="bg-gray-100 flex items-center justify-center min-h-screen">
-    <div class="bg-white p-6 rounded-lg shadow-lg w-full max-w-md">
-        <h1 class="text-2xl font-bold mb-4 text-center">Background Changer</h1>
-        <input type="file" id="imageInput" accept="image/*" class="mb-4 w-full p-2 border rounded">
-        <button id="changeBgBtn" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 disabled:bg-blue-300 w-full" disabled>Change Background to Blue</button>
-        <div class="flex justify-center mb-4 mt-4">
-            <canvas id="previewCanvas" class="border"></canvas>
-        </div>
-        <p id="status" class="text-center text-gray-600 mb-4 hidden">Processing...</p>
-        <a id="downloadLink" class="hidden bg-yellow-500 text-white px-4 py-2 rounded hover:bg-yellow-600 text-center block">Download Image</a>
-    </div>
-
-    <script>
-        const imageInput = document.getElementById('imageInput');
-        const changeBgBtn = document.getElementById('changeBgBtn');
-        const previewCanvas = document.getElementById('previewCanvas');
-        const downloadLink = document.getElementById('downloadLink');
-        const status = document.getElementById('status');
-        const ctx = previewCanvas.getContext('2d');
-        let img = new Image();
-        let originalImageData = null;
-
-        // Load image and enable button
-        imageInput.addEventListener('change', (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
-
-            if (!file.type.startsWith('image/')) {
-                alert('Please upload a valid image file (e.g., JPEG, PNG).');
-                return;
-            }
-
-            const reader = new FileReader();
-            reader.onload = (event) => {
-                img.src = event.target.result;
-                img.onload = () => {
-                    const maxSize = 1024;
-                    let width = img.width;
-                    let height = img.height;
-                    if (width > maxSize || height > maxSize) {
-                        const ratio = Math.min(maxSize / width, maxSize / height);
-                        width *= ratio;
-                        height *= ratio;
-                    }
-                    previewCanvas.width = width;
-                    previewCanvas.height = height;
-                    ctx.drawImage(img, 0, 0, width, height);
-                    originalImageData = ctx.getImageData(0, 0, width, height);
-                    changeBgBtn.disabled = false;
-                    downloadLink.classList.add('hidden');
-                    status.classList.add('hidden');
-                };
-            };
-            reader.onerror = () => alert('Error reading the image file.');
-            reader.readAsDataURL(file);
-        });
-
-        // Change background to blue
-        changeBgBtn.addEventListener('click', () => {
-            if (!img.src || !originalImageData) return alert('Please upload an image first.');
-
-            try {
-                changeBgBtn.disabled = true;
-                status.classList.remove('hidden');
-                status.textContent = 'Changing background...';
-
-                const imageData = ctx.getImageData(0, 0, previewCanvas.width, previewCanvas.height);
-                const data = imageData.data;
-                const width = previewCanvas.width;
-                const height = previewCanvas.height;
-
-                // Protect central region
-                const centerX = width / 2;
-                const centerY = height / 2;
-                const protectRadius = Math.min(width, height) * 0.5; // 50% of image
-
-                // Sample border pixels to estimate background color
-                const borderPixels = [];
-                for (let x = 0; x < width; x++) {
-                    borderPixels.push([x, 0], [x, height - 1]);
-                }
-                for (let y = 0; y < height; y++) {
-                    borderPixels.push([0, y], [width - 1, y]);
-                }
-
-                let rSum = 0, gSum = 0, bSum = 0, count = 0;
-                for (const [x, y] of borderPixels) {
-                    const i = (y * width + x) * 4;
-                    rSum += data[i];
-                    gSum += data[i + 1];
-                    bSum += data[i + 2];
-                    count++;
-                }
-                const bgColor = [rSum / count, gSum / count, bSum / count];
-
-                // Flood-fill from borders to mark background
-                const background = new Uint8ClampedArray(width * height).fill(0);
-                const queue = borderPixels.slice();
-                while (queue.length) {
-                    const [x, y] = queue.shift();
-                    const i = y * width + x;
-                    if (x < 0 || x >= width || y < 0 || y >= height || background[i]) continue;
-
-                    // Check distance to center
-                    const distToCenter = Math.hypot(x - centerX, y - centerY);
-                    if (distToCenter < protectRadius) continue;
-
-                    // Check color similarity to background
-                    const pixelI = i * 4;
-                    const colorDist = Math.hypot(
-                        data[pixelI] - bgColor[0],
-                        data[pixelI + 1] - bgColor[1],
-                        data[pixelI + 2] - bgColor[2]
-                    );
-                    if (colorDist > 60) continue; // Higher threshold for broader capture
-
-                    background[i] = 1;
-                    queue.push([x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]);
-                }
-
-                // Change background to blue (RGB: 0, 102, 204)
-                const blueColor = [0, 102, 204];
-                for (let i = 0; i < data.length; i += 4) {
-                    if (background[i / 4]) {
-                        data[i] = blueColor[0];
-                        data[i + 1] = blueColor[1];
-                        data[i + 2] = blueColor[2];
-                        data[i + 3] = 255; // Opaque
-                    }
-                }
-
-                // Check if subject is preserved
-                let subjectPixels = 0;
-                for (let y = 0; y < height; y++) {
-                    for (let x = 0; x < width; x++) {
-                        const i = (y * width + x) * 4;
-                        if (!background[(y * width + x)]) {
-                            subjectPixels++;
-                        }
-                    }
-                }
-
-                if (subjectPixels < width * height * 0.2) {
-                    alert('Subject was altered. Please use an image with a uniform background and the subject centered.');
-                    ctx.putImageData(originalImageData, 0, 0);
-                } else {
-                    ctx.putImageData(imageData, 0, 0);
-                    downloadLink.href = previewCanvas.toDataURL('image/png');
-                    downloadLink.download = 'blue_background.png';
-                    downloadLink.classList.remove('hidden');
-                }
-
-                status.classList.add('hidden');
-                changeBgBtn.disabled = false;
-            } catch (error) {
-                console.error(error);
-                alert('Error changing background. Try a smaller image or one with a uniform background.');
-                ctx.putImageData(originalImageData, 0, 0);
-                status.classList.add('hidden');
-                changeBgBtn.disabled = false;
-            }
-        });
-    </script>
-</body>
-</html>
+    <title>Indian Passport Photo Converter</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/rembg@0.0.6/dist/rembg.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+        }
+        .container {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px
