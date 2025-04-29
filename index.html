@@ -1,647 +1,167 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Indian Passport Photo Converter</title>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.18.0/dist/tf.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/body-pix@2.0.5/dist/body-pix.min.js"></script>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            max-width: 900px;
-            margin: 0 auto;
-            padding: 20px;
-            background-color: #f5f5f5;
-        }
-        h1 {
-            color: #2c3e50;
-            text-align: center;
-            margin-bottom: 30px;
-        }
-        .container {
-            background-color: white;
-            padding: 25px;
-            border-radius: 10px;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
-        }
-        .preview-container {
-            display: flex;
-            flex-wrap: wrap;
-            justify-content: space-between;
-            margin: 25px 0;
-            gap: 20px;
-        }
-        .preview-box {
-            flex: 1;
-            min-width: 300px;
-            text-align: center;
-            padding: 15px;
-            background-color: #f9f9f9;
-            border-radius: 8px;
-            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
-        }
-        .preview-box h3 {
-            margin-top: 0;
-            color: #3498db;
-            margin-bottom: 15px;
-        }
-        canvas {
-            max-width: 100%;
-            border: 1px solid #ddd;
-            background-color: white;
-            background-image: linear-gradient(45deg, #eee 25%, transparent 25%, transparent 75%, #eee 75%, #eee),
-                              linear-gradient(45deg, #eee 25%, transparent 25%, transparent 75%, #eee 75%, #eee);
-            background-size: 20px 20px;
-            background-position: 0 0, 10px 10px;
-        }
-        .controls {
-            margin: 25px 0;
-            display: flex;
-            flex-wrap: wrap;
-            gap: 10px;
-        }
-        button, input[type="file"] {
-            padding: 10px 15px;
-            border-radius: 5px;
-            font-size: 16px;
-            cursor: pointer;
-            transition: all 0.3s;
-        }
-        button {
-            background-color: #3498db;
-            color: white;
-            border: none;
-        }
-        button:hover {
-            background-color: #2980b9;
-        }
-        button:disabled {
-            background-color: #95a5a6;
-            cursor: not-allowed;
-        }
-        input[type="file"] {
-            border: 1px solid #ddd;
-            background-color: white;
-        }
-        .specs {
-            background-color: #f8f9fa;
-            padding: 20px;
-            border-radius: 8px;
-            margin-top: 25px;
-            border-left: 5px solid #3498db;
-        }
-        .specs h3 {
-            margin-top: 0;
-            color: #2c3e50;
-        }
-        .specs ul {
-            padding-left: 20px;
-        }
-        .specs li {
-            margin-bottom: 8px;
-        }
-        .loading {
-            display: none;
-            text-align: center;
-            margin: 20px 0;
-            padding: 15px;
-            background-color: #e8f4fc;
-            border-radius: 5px;
-        }
-        .loading-spinner {
-            border: 5px solid #f3f3f3;
-            border-top: 5px solid #3498db;
-            border-radius: 50%;
-            width: 40px;
-            height: 40px;
-            animation: spin 1s linear infinite;
-            margin: 0 auto 15px;
-        }
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-        .status {
-            text-align: center;
-            margin: 10px 0;
-            font-style: italic;
-            color: #7f8c8d;
-        }
-        .advanced-options {
-            margin: 20px 0;
-            padding: 15px;
-            background-color: #f0f7fd;
-            border-radius: 5px;
-            border-left: 4px solid #3498db;
-        }
-        .advanced-options h4 {
-            margin-top: 0;
-            color: #2c3e50;
-        }
-        .option-group {
-            margin: 10px 0;
-        }
-        label {
-            display: block;
-            margin-bottom: 5px;
-            font-weight: bold;
-        }
-        select, input[type="color"] {
-            padding: 8px;
-            border-radius: 4px;
-            border: 1px solid #ddd;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>Indian Passport Size Photo Converter</h1>
-        
-        <div class="controls">
-            <input type="file" id="photoInput" accept="image/*">
-            <button id="removeBgBtn" disabled>Remove Background</button>
-            <button id="cropBtn" disabled>Crop to Passport Size</button>
-            <button id="downloadBtn" disabled>Download Photo</button>
-            <button id="printBtn" disabled>Print Photo</button>
-        </div>
-        
-        <div class="status" id="statusMessage"></div>
-        
-        <div class="loading" id="loadingIndicator">
-            <div class="loading-spinner"></div>
-            <p id="loadingText">Processing image...</p>
-        </div>
-        
-        <div class="advanced-options">
-            <h4>Advanced Options</h4>
-            <div class="option-group">
-                <label for="bgColor">Background Color:</label>
-                <input type="color" id="bgColor" value="#ffffff">
-            </div>
-            <div class="option-group">
-                <label for="imageQuality">Image Quality:</label>
-                <select id="imageQuality">
-                    <option value="1.0">High (300 DPI)</option>
-                    <option value="0.8">Medium (240 DPI)</option>
-                    <option value="0.6">Low (180 DPI)</option>
-                </select>
-            </div>
-        </div>
-        
-        <div class="preview-container">
-            <div class="preview-box">
-                <h3>Original Photo</h3>
-                <canvas id="originalCanvas"></canvas>
-            </div>
-            <div class="preview-box">
-                <h3>Processed Photo</h3>
-                <canvas id="processedCanvas"></canvas>
-            </div>
-        </div>
-        
-        <div class="specs">
-            <h3>Indian Passport Photo Specifications</h3>
-            <ul>
-                <li><strong>Size:</strong> 35mm x 35mm (2x2 inches)</li>
-                <li><strong>Background:</strong> Plain white or light-colored</li>
-                <li><strong>Head height:</strong> 25mm to 35mm (70-80% of photo height)</li>
-                <li><strong>Head position:</strong> Centered, facing camera directly</li>
-                <li><strong>Expression:</strong> Neutral, mouth closed, eyes open</li>
-                <li><strong>Resolution:</strong> Minimum 600 DPI recommended</li>
-                <li><strong>Eyes:</strong> Clearly visible, no red-eye</li>
-                <li><strong>Glasses:</strong> Allowed if no glare, eyes clearly visible</li>
-                <li><strong>Headwear:</strong> Only for religious purposes, face must be visible</li>
-            </ul>
-        </div>
-    </div>
+// ... existing code ...
 
-    <script>
-        // Initialize variables
-        let originalImage = null;
-        let processedImage = null;
-        let net = null;
-        
-        // Get DOM elements
-        const photoInput = document.getElementById('photoInput');
-        const removeBgBtn = document.getElementById('removeBgBtn');
-        const cropBtn = document.getElementById('cropBtn');
-        const downloadBtn = document.getElementById('downloadBtn');
-        const printBtn = document.getElementById('printBtn');
-        const originalCanvas = document.getElementById('originalCanvas');
-        const processedCanvas = document.getElementById('processedCanvas');
-        const loadingIndicator = document.getElementById('loadingIndicator');
-        const loadingText = document.getElementById('loadingText');
-        const statusMessage = document.getElementById('statusMessage');
-        const bgColor = document.getElementById('bgColor');
-        const imageQuality = document.getElementById('imageQuality');
-        
-        // Canvas contexts
-        const originalCtx = originalCanvas.getContext('2d');
-        const processedCtx = processedCanvas.getContext('2d');
-        
-        // Load BodyPix model
-        async function loadModel() {
-            try {
-                updateStatus("Loading AI model... (This may take a minute)");
-                net = await bodyPix.load({
-                    architecture: 'MobileNetV1',
-                    outputStride: 16,
-                    multiplier: 0.75,
-                    quantBytes: 2
-                });
-                updateStatus("AI model loaded successfully");
-            } catch (error) {
-                console.error("Error loading model:", error);
-                updateStatus("Error loading AI model. Background removal may not work.", true);
-            }
+<script>
+    // Initialize variables
+    let originalImage = null;
+    let processedImage = null;
+    let net = null;
+
+    // Get DOM elements
+    const photoInput = document.getElementById('photoInput');
+    const removeBgBtn = document.getElementById('removeBgBtn');
+    const cropBtn = document.getElementById('cropBtn');
+    const downloadBtn = document.getElementById('downloadBtn');
+    const printBtn = document.getElementById('printBtn');
+    const originalCanvas = document.getElementById('originalCanvas');
+    const processedCanvas = document.getElementById('processedCanvas');
+    const loadingIndicator = document.getElementById('loadingIndicator');
+    const loadingText = document.getElementById('loadingText');
+    const statusMessage = document.getElementById('statusMessage');
+    const bgColor = document.getElementById('bgColor');
+    const imageQuality = document.getElementById('imageQuality');
+
+    // Canvas contexts
+    const originalCtx = originalCanvas.getContext('2d');
+    const processedCtx = processedCanvas.getContext('2d');
+
+    // Load BodyPix model
+    async function loadModel() {
+        try {
+            showLoading("Loading AI model...");
+            // Wait for TensorFlow.js to be ready
+            await tf.ready();
+            // Load the BodyPix model
+            net = await bodyPix.load({
+                architecture: 'MobileNetV1',
+                outputStride: 16,
+                multiplier: 0.75,
+                quantBytes: 2
+            });
+            hideLoading();
+            updateStatus("AI model loaded successfully");
+            console.log("Model loaded successfully");
+        } catch (error) {
+            console.error("Error loading model:", error);
+            hideLoading();
+            updateStatus("Error loading AI model. Please refresh the page.", true);
         }
-        
-        // Initialize on page load
-        window.addEventListener('load', () => {
-            loadModel();
-            updateStatus("Ready to upload photo");
-        });
-        
-        // File input change event
-        photoInput.addEventListener('change', function(e) {
-            if (e.target.files && e.target.files[0]) {
-                const file = e.target.files[0];
-                
-                // Check file size (max 5MB)
-                if (file.size > 5 * 1024 * 1024) {
-                    updateStatus("File too large. Please select an image under 5MB.", true);
-                    return;
-                }
-                
-                const reader = new FileReader();
-                
-                reader.onload = function(event) {
-                    originalImage = new Image();
-                    originalImage.onload = function() {
-                        // Display original image
-                        displayImage(originalImage, originalCanvas, originalCtx);
-                        
-                        // Initialize processed canvas with same dimensions
-                        processedCanvas.width = originalCanvas.width;
-                        processedCanvas.height = originalCanvas.height;
-                        processedCtx.drawImage(originalImage, 0, 0, processedCanvas.width, processedCanvas.height);
-                        
-                        // Store original in processed image
-                        processedImage = new Image();
-                        processedImage.src = processedCanvas.toDataURL('image/png');
-                        
-                        // Enable buttons
-                        removeBgBtn.disabled = false;
-                        cropBtn.disabled = false;
-                        downloadBtn.disabled = false;
-                        printBtn.disabled = false;
-                        
-                        updateStatus("Image loaded successfully. You can now process it.");
-                    };
-                    originalImage.onerror = function() {
-                        updateStatus("Error loading image. Please try another file.", true);
-                    };
-                    originalImage.src = event.target.result;
-                };
-                
-                reader.onerror = function() {
-                    updateStatus("Error reading file. Please try again.", true);
-                };
-                
-                reader.readAsDataURL(file);
-                updateStatus("Loading image...");
-            }
-        });
-        
-        // Display image on canvas
-        function displayImage(image, canvas, ctx) {
-            // Calculate dimensions to fit in preview while maintaining aspect ratio
-            const maxWidth = 400;
-            const maxHeight = 400;
+    }
+
+    // Initialize on page load
+    document.addEventListener('DOMContentLoaded', () => {
+        console.log("Page loaded, initializing...");
+        loadModel();
+    });
+
+    // File input change event
+    photoInput.addEventListener('change', function(e) {
+        if (e.target.files && e.target.files[0]) {
+            const file = e.target.files[0];
             
-            let width = image.width;
-            let height = image.height;
-            
-            if (width > maxWidth) {
-                height = (maxWidth / width) * height;
-                width = maxWidth;
-            }
-            
-            if (height > maxHeight) {
-                width = (maxHeight / height) * width;
-                height = maxHeight;
-            }
-            
-            canvas.width = width;
-            canvas.height = height;
-            ctx.drawImage(image, 0, 0, width, height);
-        }
-        
-        // Remove background button click event
-        removeBgBtn.addEventListener('click', async function() {
-            if (!originalImage) {
-                updateStatus("Please upload an image first", true);
+            // Check file size (max 5MB)
+            if (file.size > 5 * 1024 * 1024) {
+                updateStatus("File too large. Please select an image under 5MB.", true);
                 return;
             }
             
-            if (!net) {
-                updateStatus("AI model not loaded yet. Please wait...", true);
-                return;
-            }
+            const reader = new FileReader();
             
-            showLoading("Removing background...");
-            
-            try {
-                // Create a temporary canvas for processing
-                const tempCanvas = document.createElement('canvas');
-                tempCanvas.width = originalImage.width;
-                tempCanvas.height = originalImage.height;
-                const tempCtx = tempCanvas.getContext('2d');
-                tempCtx.drawImage(originalImage, 0, 0);
-                
-                // Perform segmentation
-                const segmentation = await net.segmentPerson(tempCanvas, {
-                    flipHorizontal: false,
-                    internalResolution: 'high',
-                    segmentationThreshold: 0.7
-                });
-                
-                // Create mask
-                const mask = bodyPix.toMask(segmentation);
-                const opacity = 1;
-                const maskBlurAmount = 3;
-                const flipHorizontal = false;
-                
-                // Apply mask to create transparent background
-                bodyPix.drawMask(
-                    tempCanvas, tempCanvas, mask, opacity, maskBlurAmount, flipHorizontal
-                );
-                
-                // Display result
-                processedImage = new Image();
-                processedImage.onload = function() {
-                    displayImage(processedImage, processedCanvas, processedCtx);
-                    hideLoading();
-                    updateStatus("Background removed successfully");
-                };
-                processedImage.src = tempCanvas.toDataURL('image/png');
-            } catch (error) {
-                console.error("Error removing background:", error);
-                hideLoading();
-                updateStatus("Error removing background. Please try again.", true);
-            }
-        });
-        
-        // Crop to passport size button click event
-        cropBtn.addEventListener('click', function() {
-            if (!originalImage) {
-                updateStatus("Please upload an image first", true);
-                return;
-            }
-            
-            showLoading("Cropping to passport size...");
-            
-            setTimeout(() => {
-                try {
-                    // Calculate passport size dimensions (35x35mm at 300dpi)
-                    // 35mm = 1.38 inches, 1.38 * 300dpi = ~413 pixels
-                    const quality = parseFloat(imageQuality.value);
-                    const passportWidth = Math.round(413 * quality);
-                    const passportHeight = Math.round(413 * quality);
+            reader.onload = function(event) {
+                originalImage = new Image();
+                originalImage.onload = function() {
+                    // Display original image
+                    displayImage(originalImage, originalCanvas, originalCtx);
                     
-                    // Calculate aspect ratio of original image
-                    const aspectRatio = originalImage.width / originalImage.height;
+                    // Initialize processed canvas with same dimensions
+                    processedCanvas.width = originalCanvas.width;
+                    processedCanvas.height = originalCanvas.height;
+                    processedCtx.drawImage(originalImage, 0, 0, processedCanvas.width, processedCanvas.height);
                     
-                    // Determine crop dimensions (square)
-                    let cropSize;
-                    if (aspectRatio > 1) {
-                        // Wider than tall - crop width to match height
-                        cropSize = originalImage.height;
-                    } else {
-                        // Taller than wide - crop height to match width
-                        cropSize = originalImage.width;
-                    }
-                    
-                    // Calculate crop position (center)
-                    const cropX = (originalImage.width - cropSize) / 2;
-                    const cropY = (originalImage.height - cropSize) / 2;
-                    
-                    // Create a temporary canvas for cropping
-                    const tempCanvas = document.createElement('canvas');
-                    tempCanvas.width = cropSize;
-                    tempCanvas.height = cropSize;
-                    const tempCtx = tempCanvas.getContext('2d');
-                    
-                    // Crop the image
-                    tempCtx.drawImage(
-                        processedImage || originalImage,
-                        cropX, cropY, cropSize, cropSize,
-                        0, 0, cropSize, cropSize
-                    );
-                    
-                    // Resize to passport dimensions
-                    processedCanvas.width = passportWidth;
-                    processedCanvas.height = passportHeight;
-                    processedCtx.imageSmoothingQuality = 'high';
-                    processedCtx.drawImage(tempCanvas, 0, 0, passportWidth, passportHeight);
-                    
-                    // Add background color if transparent
-                    if (isTransparent()) {
-                        addColoredBackground(bgColor.value);
-                    }
-                    
-                    // Store processed image
+                    // Store original in processed image
                     processedImage = new Image();
-                    processedImage.onload = function() {
-                        hideLoading();
-                        updateStatus(`Photo cropped to passport size (${passportWidth}x${passportHeight}px)`);
-                    };
                     processedImage.src = processedCanvas.toDataURL('image/png');
-                } catch (error) {
-                    console.error("Error cropping image:", error);
-                    hideLoading();
-                    updateStatus("Error cropping image. Please try again.", true);
-                }
-            }, 100);
-        });
-        
-        // Download button click event
-        downloadBtn.addEventListener('click', function() {
-            if (!processedImage && !originalImage) {
-                updateStatus("Please upload and process an image first", true);
-                return;
-            }
+                    
+                    // Enable buttons
+                    removeBgBtn.disabled = false;
+                    cropBtn.disabled = false;
+                    downloadBtn.disabled = false;
+                    printBtn.disabled = false;
+                    
+                    updateStatus("Image loaded successfully. You can now process it.");
+                };
+                originalImage.src = event.target.result;
+            };
             
-            // Create a temporary link
-            const link = document.createElement('a');
-            link.download = 'indian-passport-photo.png';
-            link.href = processedCanvas.toDataURL('image/png');
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            
-            updateStatus("Photo downloaded successfully");
-        });
-        
-        // Print button click event
-        printBtn.addEventListener('click', function() {
-            if (!processedImage && !originalImage) {
-                updateStatus("Please upload and process an image first", true);
-                return;
-            }
-            
-            // Create a new window with the image for printing
-            const printWindow = window.open('', '_blank');
-            const printContent = `
-                <!DOCTYPE html>
-                <html>
-                    <head>
-                        <title>Print Passport Photo</title>
-                        <style>
-                            body { text-align: center; margin: 0; padding: 20px; font-family: Arial; }
-                            .photo-container { margin: 20px auto; }
-                            img { max-width: 100%; height: auto; }
-                            @media print {
-                                body { padding: 0; }
-                                .no-print { display: none; }
-                                .photo-container { 
-                                    width: 35mm; 
-                                    height: 35mm; 
-                                    margin: 0 auto;
-                                    page-break-inside: avoid;
-                                }
-                                img { width: 100%; height: 100%; object-fit: contain; }
-                            }
-                            .instructions {
-                                margin: 20px auto;
-                                text-align: left;
-                                max-width: 600px;
-                                padding: 15px;
-                                background-color: #f8f9fa;
-                                border-radius: 5px;
-                            }
-                            h1 { color: #2c3e50; }
-                            button {
-                                padding: 10px 20px;
-                                background-color: #3498db;
-                                color: white;
-                                border: none;
-                                border-radius: 5px;
-                                cursor: pointer;
-                                margin: 10px;
-                            }
-                        </style>
-                    </head>
-                    <body>
-                        <h1>Indian Passport Photo</h1>
-                        <div class="photo-container">
-                            <img src="${processedCanvas.toDataURL('image/png')}" alt="Passport Photo">
-                        </div>
-                        <div class="instructions">
-                            <h3>Printing Instructions:</h3>
-                            <ol>
-                                <li>Ensure the photo prints at exactly 35mm x 35mm (2x2 inches)</li>
-                                <li>Use high-quality photo paper (matte or glossy)</li>
-                                <li>Print at 300 DPI or higher for best results</li>
-                                <li>The background should be plain ${bgColor.value === '#ffffff' ? 'white' : 'colored'}</li>
-                                <li>Check that your face is centered and clearly visible</li>
-                            </ol>
-                            <p><strong>Note:</strong> Most photo editing software allows you to specify print dimensions. Set the size to 35x35mm or 2x2 inches when printing.</p>
-                        </div>
-                        <button class="no-print" onclick="window.print()">Print Now</button>
-                        <button class="no-print" onclick="window.close()">Close</button>
-                        <script>
-                            window.onload = function() {
-                                setTimeout(function() {
-                                    window.print();
-                                }, 300);
-                            };
-                        </script>
-                    </body>
-                </html>
-            `;
-            
-            printWindow.document.open();
-            printWindow.document.write(printContent);
-            printWindow.document.close();
-            
-            updateStatus("Print dialog opened");
-        });
-        
-        // Helper function to check if image has transparency
-        function isTransparent() {
-            if (!processedImage) return false;
-            
-            // Check a few pixels to determine transparency
-            const imageData = processedCtx.getImageData(0, 0, processedCanvas.width, processedCanvas.height).data;
-            
-            // Check first few pixels
-            for (let i = 3; i < 12; i += 4) {
-                if (imageData[i] < 255) return true;
-            }
-            
-            return false;
+            reader.readAsDataURL(file);
+            updateStatus("Loading image...");
+        }
+    });
+
+    // Remove background button click event
+    removeBgBtn.addEventListener('click', async function() {
+        if (!originalImage) {
+            updateStatus("Please upload an image first", true);
+            return;
         }
         
-        // Helper function to add colored background
-        function addColoredBackground(color) {
-            // Create a temporary canvas
+        if (!net) {
+            updateStatus("AI model not loaded yet. Please wait...", true);
+            return;
+        }
+        
+        showLoading("Removing background...");
+        
+        try {
+            // Create a temporary canvas for processing
             const tempCanvas = document.createElement('canvas');
-            tempCanvas.width = processedCanvas.width;
-            tempCanvas.height = processedCanvas.height;
+            tempCanvas.width = originalImage.width;
+            tempCanvas.height = originalImage.height;
             const tempCtx = tempCanvas.getContext('2d');
+            tempCtx.drawImage(originalImage, 0, 0);
+
+            console.log("Starting segmentation...");
+            // Perform segmentation
+            const segmentation = await net.segmentPerson(tempCanvas, {
+                flipHorizontal: false,
+                internalResolution: 'medium',
+                segmentationThreshold: 0.5,
+                maxDetections: 1
+            });
+            console.log("Segmentation complete");
+
+            // Create mask
+            const mask = bodyPix.toMask(segmentation);
             
-            // Fill with color
-            tempCtx.fillStyle = color;
-            tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+            // Clear the canvas
+            tempCtx.clearRect(0, 0, tempCanvas.width, tempCanvas.height);
             
-            // Draw the original image on top
-            tempCtx.drawImage(processedCanvas, 0, 0);
+            // Draw original image
+            tempCtx.drawImage(originalImage, 0, 0);
             
-            // Copy back to processed canvas
-            processedCtx.drawImage(tempCanvas, 0, 0);
+            // Apply mask
+            bodyPix.drawMask(
+                tempCanvas,
+                tempCanvas,
+                mask,
+                1, // opacity
+                2, // maskBlurAmount
+                false // flipHorizontal
+            );
+
+            // Display result
+            processedImage = new Image();
+            processedImage.onload = function() {
+                displayImage(processedImage, processedCanvas, processedCtx);
+                hideLoading();
+                updateStatus("Background removed successfully");
+            };
+            processedImage.src = tempCanvas.toDataURL('image/png');
+        } catch (error) {
+            console.error("Error removing background:", error);
+            hideLoading();
+            updateStatus("Error removing background. Please try again.", true);
         }
-        
-        // Show loading indicator
-        function showLoading(message = "Processing...") {
-            loadingText.textContent = message;
-            loadingIndicator.style.display = 'block';
-            disableButtons(true);
-        }
-        
-        // Hide loading indicator
-        function hideLoading() {
-            loadingIndicator.style.display = 'none';
-            disableButtons(false);
-        }
-        
-        // Disable/enable all buttons
-        function disableButtons(disabled) {
-            removeBgBtn.disabled = disabled;
-            cropBtn.disabled = disabled;
-            downloadBtn.disabled = disabled;
-            printBtn.disabled = disabled;
-        }
-        
-        // Update status message
-        function updateStatus(message, isError = false) {
-            statusMessage.textContent = message;
-            statusMessage.style.color = isError ? '#e74c3c' : '#7f8c8d';
-        }
-        
-        // Background color change event
-        bgColor.addEventListener('change', function() {
-            if (processedImage && isTransparent()) {
-                addColoredBackground(this.value);
-                
-                // Update processed image
-                processedImage = new Image();
-                processedImage.src = processedCanvas.toDataURL('image/png');
-                
-                updateStatus("Background color updated");
-            }
-        });
-    </script>
-</body>
-</html>
+    });
+
+    // ... rest of existing code ...
+</script>
